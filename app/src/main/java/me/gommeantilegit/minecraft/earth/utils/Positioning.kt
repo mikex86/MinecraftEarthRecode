@@ -1,5 +1,9 @@
 package me.gommeantilegit.minecraft.earth.utils
 
+import com.google.ar.sceneform.math.Vector3
+import me.gommeantilegit.minecraft.earth.world.ChunkPosition
+import kotlin.math.floor
+
 data class Vec3i(val x: Int, val y: Int, val z: Int) {
     operator fun plus(vec: Vec3i) = Vec3i(x + vec.x, y + vec.y, vec.z + z)
 }
@@ -38,6 +42,20 @@ enum class EnumFacing(val index: Int, val facingName: String, val axisDirection:
 
 data class BlockPos(val x: Int, val y: Int, val z: Int) {
 
+    val chunkPos: ChunkPosition
+        get() {
+            return ChunkPosition.of(this)
+        }
+
     constructor(vec3i: Vec3i) : this(vec3i.x, vec3i.y, vec3i.z)
+
+    companion object {
+        private fun floorCast(value: Float): Int {
+            return if (value > 0) value.toInt() else floor(value).toInt()
+        }
+        fun of(vec: Vector3): BlockPos {
+            return BlockPos(floorCast(vec.x), floorCast(vec.y), floorCast(vec.z))
+        }
+    }
 
 }

@@ -12,44 +12,37 @@ import android.os.Looper
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.MotionEvent
+import android.widget.TextView
 import android.widget.Toast
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
-import com.google.ar.core.Pose
-import com.google.ar.sceneform.AnchorNode
+import com.google.ar.core.Session
+import com.google.ar.sceneform.FrameTime
+import com.google.ar.sceneform.Scene
+import com.google.ar.sceneform.math.Vector3
 import com.google.ar.sceneform.rendering.ModelRenderable
 import com.google.ar.sceneform.rendering.RenderableDefinition
 import com.google.ar.sceneform.ux.ArFragment
 import com.google.ar.sceneform.ux.TransformableNode
-import me.gommeantilegit.minecraft.earth.block.Blocks
 import me.gommeantilegit.minecraft.earth.rendering.BlockModelBakery
-import me.gommeantilegit.minecraft.earth.world.BlockState
+import me.gommeantilegit.minecraft.earth.utils.BlockPos
+import me.gommeantilegit.minecraft.earth.world.ChunkPosition
+import me.gommeantilegit.minecraft.earth.world.ChunkResponse
 import me.gommeantilegit.minecraft.earth.world.World
+import me.gommeantilegit.minecraft.earth.world.WorldDisplayer
+import me.gommeantilegit.minecraft.earth.world.generation.SuperFlatChunkGenerator
 
 /**
  * This is an example activity that uses the Sceneform UX package to make common AR tasks easier.
  */
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var arScene: Scene
+    private lateinit var arSession: Session
     private lateinit var arFragment: ArFragment
+    private lateinit var worldDisplayer: WorldDisplayer
+    private lateinit var debugText: TextView
     private var placed = false
-
-    /**
-     * Handler on UI thread
-     */
-    private val handler = Handler(Looper.getMainLooper()) { message ->
-        val obj = message.obj
-        if (obj is World.ChunkResponse) {
-            val andy = TransformableNode(arFragment.transformationSystem)
-            andy.setParent(obj.anchorNode)
-            val definition = RenderableDefinition.builder().setVertices(obj.vertices).setSubmeshes(obj.meshes).build()
-            ModelRenderable.builder().setSource(definition).build().thenAccept { renderable ->
-                andy.renderable = renderable
-                andy.select()
-            }
-        }
-        true
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         context = this
@@ -60,127 +53,45 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_ux)
-        arFragment = supportFragmentManager.findFragmentById(R.id.ux_fragment) as ArFragment
 
+        debugText = findViewById(R.id.debugText)
+        arFragment = supportFragmentManager.findFragmentById(R.id.ux_fragment) as ArFragment
+        arScene = arFragment.arSceneView.scene
 
         BlockModelBakery.init(this)
 
-        val chunk = World.Chunk()
-
-        // Test blocks
-
-        for (x in 0 until 16) {
-            for (z in 0 until 16) {
-                chunk.setBlock(x, 0, z, BlockState(Blocks.bedrock))
-                chunk.setBlock(x, 1, z, BlockState(Blocks.stone))
-                chunk.setBlock(x, 2, z, BlockState(Blocks.dirt))
-                chunk.setBlock(x, 3, z, BlockState(Blocks.grass))
-            }
-        }
-
-        chunk.setBlock(8, 4, 8, BlockState(Blocks.stone))
-        chunk.setBlock(8, 5, 8, BlockState(Blocks.stone))
-        chunk.setBlock(8, 6, 8, BlockState(Blocks.stone))
-        chunk.setBlock(8, 6, 7, BlockState(Blocks.stone))
-        chunk.setBlock(8, 6, 6, BlockState(Blocks.stone))
-        chunk.setBlock(8, 5, 6, BlockState(Blocks.stone))
-        chunk.setBlock(8, 4, 6, BlockState(Blocks.stone))
-
-        chunk.setBlock(6, 6, 6, BlockState(Blocks.bedrock))
-        chunk.setBlock(6, 6, 4, BlockState(Blocks.grass))
-        chunk.setBlock(6, 5, 4, BlockState(Blocks.dirt))
-        chunk.setBlock(6, 4, 4, BlockState(Blocks.stone))
-
-
-        for (x in 1..3) {
-            for (y in 1..3) {
-                for (z in 1..3) {
-                    chunk.setBlock(x, y, z, BlockState(Blocks.air))
-                }
-            }
-        }
-
-        chunk.setBlock(3, 1, 3, BlockState(Blocks.diamondOre))
-
-        val tree =
-                arrayOf(
-
-                        ("     \n" +
-                                "     \n" +
-                                "  x  \n" +
-                                "     \n" +
-                                "     \n"),
-
-                        ("     \n" +
-                                "     \n" +
-                                "  x  \n" +
-                                "     \n" +
-                                "     \n"),
-
-
-                        ("     \n" +
-                                "     \n" +
-                                "  x  \n" +
-                                "     \n" +
-                                "     \n"),
-
-                        (".....\n" +
-                                ".....\n" +
-                                "..x..\n" +
-                                ".....\n" +
-                                ".... \n"),
-
-                        (" ... \n" +
-                                ".....\n" +
-                                "..x..\n" +
-                                ".....\n" +
-                                " ... \n"),
-
-                        ("     \n" +
-                                " ... \n" +
-                                " .x. \n" +
-                                " ... \n" +
-                                "     \n"),
-
-                        ("     \n" +
-                                "  .  \n" +
-                                " ... \n" +
-                                "  .  \n" +
-                                "     \n")
-                )
-
-        val x = 2
-        val z = 2
-        val y = 4
-
-        for ((yo, f) in tree.withIndex()) {
-            for ((xo, line) in f.lines().withIndex()) {
-                for ((zo, c) in line.toCharArray().withIndex()) {
-                    chunk.setBlock(x + xo, y + yo, z + zo, BlockState(when (c) {
-                        ' ' -> Blocks.air
-                        '.' -> Blocks.leaves
-                        'x' -> Blocks.log
-                        else -> Blocks.air
-                    }))
-                }
-            }
-        }
-
-        val groundY = 4f
+        val world = World()
+        val worldGenerator = SuperFlatChunkGenerator()
 
         arFragment.setOnTapArPlaneListener { hitResult: HitResult, _: Plane, _: MotionEvent ->
             if (placed) {
                 return@setOnTapArPlaneListener
             }
-
-            val anchor = hitResult.trackable.createAnchor(hitResult.hitPose.compose(Pose.makeTranslation(0f, -groundY, 0f)))
-
-            val anchorNode = AnchorNode(anchor)
-            anchorNode.setParent(arFragment.arSceneView.scene)
-
-            chunk.createRenderable(handler, anchorNode)
+            arSession = arFragment.arSceneView.session!!
+            worldDisplayer = WorldDisplayer(4, arFragment, arSession, hitResult, world, worldGenerator)
             placed = true
         }
+        arScene.addOnUpdateListener { frameTime ->
+            doTick(frameTime!!)
+        }
+    }
+
+    private fun doTick(frameTime: FrameTime) {
+        if (!placed) {
+            return
+        }
+        val viewerPosition = worldDisplayer.getViewerPosition(arScene.camera.localPosition)
+
+        val currentBlockPos = BlockPos.of(viewerPosition)
+        val currentChunkPos = currentBlockPos.chunkPos
+
+        setDebugInfo(viewerPosition, currentBlockPos, currentChunkPos)
+
+        worldDisplayer.onViewerMoved(viewerPosition)
+    }
+
+    private fun setDebugInfo(viewerPos: Vector3, blockPos: BlockPos, chunkPosition: ChunkPosition) {
+        debugText.text = "ViewerPos: (x=${"%.2f".format(viewerPos.x)}, y=${"%.2f".format(viewerPos.y)}, z=${"%.2f".format(viewerPos.z)})\nBlockPos: (x=${blockPos.x}, y=${blockPos.y}, z=${blockPos.z})\nChunkPosition: (x=${chunkPosition.xPosition}, y=${chunkPosition.yPosition}, z=${chunkPosition.zPosition})"
     }
 
     companion object {

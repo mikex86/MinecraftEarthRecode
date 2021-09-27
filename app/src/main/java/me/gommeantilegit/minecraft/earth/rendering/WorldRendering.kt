@@ -6,6 +6,7 @@ import com.google.ar.sceneform.rendering.*
 import me.gommeantilegit.minecraft.earth.block.Block
 import me.gommeantilegit.minecraft.earth.block.Blocks
 import me.gommeantilegit.minecraft.earth.utils.EnumFacing
+import me.gommeantilegit.minecraft.earth.world.Chunk
 import me.gommeantilegit.minecraft.earth.world.World
 import java.util.concurrent.CompletableFuture
 
@@ -14,7 +15,7 @@ class TextureResource(val textureResource: String, val transparent: Boolean)
 class TextureData(val texture: CompletableFuture<Texture>, val transparent: Boolean)
 
 interface Mesher {
-    fun build(chunk: World.Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh>
+    fun build(chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh>
 }
 
 /**
@@ -69,7 +70,7 @@ class StupidMesher(textureFutures: List<List<TextureData>>, context: Context, me
         }
     }
 
-    override fun build(chunk: World.Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh> {
+    override fun build(chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh> {
 
         val size = Vector3(1f, 1f, 1f).scaled(0.5f).scaled(World.worldScale)
 
