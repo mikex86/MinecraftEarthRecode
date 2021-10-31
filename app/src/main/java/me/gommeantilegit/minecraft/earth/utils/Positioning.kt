@@ -2,6 +2,7 @@ package me.gommeantilegit.minecraft.earth.utils
 
 import com.google.ar.sceneform.math.Vector3
 import me.gommeantilegit.minecraft.earth.world.ChunkPosition
+import kotlin.math.ceil
 import kotlin.math.floor
 
 data class Vec3i(val x: Int, val y: Int, val z: Int) {
@@ -50,11 +51,11 @@ data class BlockPos(val x: Int, val y: Int, val z: Int) {
     constructor(vec3i: Vec3i) : this(vec3i.x, vec3i.y, vec3i.z)
 
     companion object {
-        private fun floorCast(value: Float): Int {
-            return if (value > 0) value.toInt() else floor(value).toInt()
+        private fun floorCeil(value: Float): Int {
+            return if (value > 0) ceil(value).toInt() else floor(value).toInt()
         }
         fun of(vec: Vector3): BlockPos {
-            return BlockPos(floorCast(vec.x), floorCast(vec.y), floorCast(vec.z))
+            return BlockPos(floorCeil(vec.x), floorCeil(vec.y), floorCeil(vec.z))
         }
     }
 

@@ -3,8 +3,10 @@ package me.gommeantilegit.minecraft.earth.world
 import android.os.Handler
 import android.os.Looper
 import com.google.ar.core.HitResult
+import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.sceneform.AnchorNode
+import com.google.ar.sceneform.Node
 import com.google.ar.sceneform.math.Vector3
 import com.google.ar.sceneform.rendering.ModelRenderable
 import com.google.ar.sceneform.rendering.RenderableDefinition
@@ -18,28 +20,21 @@ import me.gommeantilegit.minecraft.earth.utils.BlockPos
 import me.gommeantilegit.minecraft.earth.utils.EnumFacing
 import me.gommeantilegit.minecraft.earth.world.generation.IWorldGenerator
 import java.lang.Math.floorDiv
+import java.util.*
 import java.util.concurrent.CompletableFuture
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
 
 data class BlockState(val block: Block)
 
 class WorldDisplayer(private val renderDistance: Int, private val arFragment: ArFragment, private val arSession: Session, private val worldPlacePoint: HitResult, private val world: World, private val worldGenerator: IWorldGenerator) {
 
-    private val originAnchor = worldPlacePoint.trackable.createAnchor(worldPlacePoint.hitPose)
+    private val originAnchor = AnchorNode(worldPlacePoint.trackable.createAnchor(worldPlacePoint.hitPose)).apply {
+        setParent(arFragment.arSceneView.scene)
+    }
 
     private var lastChunkPos: ChunkPosition? = null
     private var lastBlockPos: BlockPos? = null
-
-    private val worldAnchor: AnchorNode = run {
-        val chunkPose = originAnchor.pose
-        val anchor = arSession.createAnchor(chunkPose)
-        val anchorNode = AnchorNode(anchor)
-        anchorNode.setParent(arFragment.arSceneView.scene)
-        return@run anchorNode
-    }
-
-    private val worldNode = TransformableNode(arFragment.transformationSystem).apply {
-        setParent(worldAnchor)
-    }
 
     /**
      * Handler on UI thread
@@ -47,17 +42,23 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
     private val handler = Handler(Looper.getMainLooper()) { message ->
         val obj = message.obj
         if (obj is ChunkResponse) {
-            val chunkNode = TransformableNode(arFragment.transformationSystem)
+            val node = Node().apply {
+                setParent(originAnchor)
+                val vec = obj.chunkPosition.asVector
+                vec.y -= 1
+                localPosition = vec
+            }
+
             val definition = RenderableDefinition.builder()
                     .setVertices(obj.vertices)
                     .setSubmeshes(obj.meshes)
                     .build()
+
             ModelRenderable.builder()
                     .setSource(definition)
                     .build()
                     .thenAccept { renderable ->
-                        chunkNode.renderable = renderable
-                        chunkNode.setParent(worldNode)
+                        node.renderable = renderable
                     }
         }
         true
@@ -88,13 +89,13 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
     private fun displayChunk(chunk: Chunk) {
         chunk.createRenderable().thenAccept { pair ->
             val message = handler.obtainMessage()
-            message.obj = ChunkResponse(pair.second, pair.first)
+            message.obj = ChunkResponse(chunk.chunkPosition, pair.second, pair.first)
             handler.sendMessage(message)
         }
     }
 
     fun getViewerPosition(localPosition: Vector3): Vector3 {
-        val originTranslation = originAnchor.pose.translation
+        val originTranslation = originAnchor.anchor!!.pose.translation
         return Vector3(localPosition.x - originTranslation[0], localPosition.y - originTranslation[1], localPosition.z - originTranslation[2])
     }
 }
@@ -131,6 +132,11 @@ data class ChunkPosition(val chunkX: Int, val chunkY: Int, val chunkZ: Int) {
     val zPosition: Int
         get() {
             return chunkZ * Chunk.chunkSize
+        }
+
+    val asVector: Vector3
+        get() {
+            return Vector3(xPosition.toFloat(), yPosition.toFloat(), zPosition.toFloat())
         }
 
     companion object {
@@ -176,7 +182,7 @@ open class World {
 /**
  * Response from async chunk creation
  */
-data class ChunkResponse(val vertices: List<Vertex>, val meshes: List<RenderableDefinition.Submesh>)
+data class ChunkResponse(val chunkPosition: ChunkPosition, val vertices: List<Vertex>, val meshes: List<RenderableDefinition.Submesh>)
 
 open class Chunk(val chunkPosition: ChunkPosition) {
 
@@ -223,7 +229,7 @@ open class Chunk(val chunkPosition: ChunkPosition) {
                 for (z in 0 until chunkSize) {
                     val state = getBlock(x, y, z)
                     meshes.addAll(BlockModelBakery.getModel(state?.block
-                            ?: error("Could not retrieve chunk local block state for co-ordinates (x=$x, y=$y, z=$z)"))?.modelBuilder?.build(this, vertices, chunkPosition.xPosition + x, chunkPosition.yPosition + y, chunkPosition.zPosition + z)
+                            ?: error("Could not retrieve chunk local block state for co-ordinates (x=$x, y=$y, z=$z)"))?.modelBuilder?.build(this, vertices, x, y, z)
                             ?: continue) // continue for invisible blocks as they do not have a model
                 }
             }

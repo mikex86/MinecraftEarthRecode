@@ -67,9 +67,9 @@ class MainActivity : AppCompatActivity() {
             if (placed) {
                 return@setOnTapArPlaneListener
             }
+            placed = true
             arSession = arFragment.arSceneView.session!!
             worldDisplayer = WorldDisplayer(4, arFragment, arSession, hitResult, world, worldGenerator)
-            placed = true
         }
         arScene.addOnUpdateListener { frameTime ->
             doTick(frameTime!!)
