@@ -51,9 +51,6 @@ data class BlockPos(val x: Int, val y: Int, val z: Int) {
     constructor(vec3i: Vec3i) : this(vec3i.x, vec3i.y, vec3i.z)
 
     companion object {
-        private fun floorCeil(value: Float): Int {
-            return if (value > 0) ceil(value).toInt() else floor(value).toInt()
-        }
         fun of(vec: Vector3): BlockPos {
             return BlockPos(floorCeil(vec.x), floorCeil(vec.y), floorCeil(vec.z))
         }

@@ -10,6 +10,7 @@ import com.google.ar.sceneform.Node
 import com.google.ar.sceneform.math.Vector3
 import com.google.ar.sceneform.rendering.ModelRenderable
 import com.google.ar.sceneform.rendering.RenderableDefinition
+import com.google.ar.sceneform.rendering.ThreadPools
 import com.google.ar.sceneform.rendering.Vertex
 import com.google.ar.sceneform.ux.ArFragment
 import com.google.ar.sceneform.ux.TransformableNode
@@ -24,6 +25,8 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
+import kotlin.collections.HashSet
+import kotlin.math.roundToLong
 
 data class BlockState(val block: Block)
 
@@ -43,7 +46,6 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
         val obj = message.obj
         if (obj is ChunkResponse) {
             val node = Node().apply {
-                setParent(originAnchor)
                 val vec = obj.chunkPosition.asVector
                 vec.y -= 1
                 localPosition = vec
@@ -57,8 +59,12 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
             ModelRenderable.builder()
                     .setSource(definition)
                     .build()
-                    .thenAccept { renderable ->
-                        node.renderable = renderable
+                    .thenAcceptAsync { renderable ->
+                        Thread.sleep(1)
+                        ThreadPools.getMainExecutor().execute {
+                            node.renderable = renderable
+                            node.setParent(originAnchor)
+                        }
                     }
         }
         true
@@ -75,15 +81,16 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
     }
 
     private fun onChunkChanged(newChunkPosition: ChunkPosition) {
-        val pos = newChunkPosition
-//        for (pos in newChunkPosition.iterateRange(renderDistance)) {
-        if (!world.hasChunkAt(pos)) {
-            val chunk = Chunk(pos)
-            worldGenerator.generate(chunk)
-            world.addChunk(chunk)
-            displayChunk(chunk)
+        for (pos in newChunkPosition.iterateRange(renderDistance)) {
+            if (!world.hasChunkAt(pos)) {
+                CompletableFuture.supplyAsync {
+                    val chunk = Chunk(pos)
+                    worldGenerator.generate(chunk)
+                    world.addChunk(chunk)
+                    displayChunk(chunk)
+                }
+            }
         }
-//        }
     }
 
     private fun displayChunk(chunk: Chunk) {
@@ -107,14 +114,15 @@ class WorldDisplayer(private val renderDistance: Int, private val arFragment: Ar
  */
 data class ChunkPosition(val chunkX: Int, val chunkY: Int, val chunkZ: Int) {
 
-    fun iterateRange(chunkDistance: Int): List<ChunkPosition> {
-        val positions = ArrayList<ChunkPosition>((2 * chunkDistance) * (2 * chunkDistance) * (2 * chunkDistance))
+    fun iterateRange(chunkDistance: Int): Iterable<ChunkPosition> {
+        val positions = HashSet<ChunkPosition>((2 * chunkDistance) * (2 * chunkDistance) * (2 * chunkDistance))
         for (x in -chunkDistance..chunkDistance) {
-            for (y in -chunkDistance..chunkDistance) {
-                for (z in -chunkDistance..chunkDistance) {
-                    positions.add(ChunkPosition(chunkX + x, chunkY + y, chunkZ + z))
-                }
+            val y = 0
+            //for (y in -chunkDistance..chunkDistance) {
+            for (z in -chunkDistance..chunkDistance) {
+                positions.add(ChunkPosition(chunkX + x, chunkY + y, chunkZ + z))
             }
+            //}
         }
         return positions
     }
@@ -217,8 +225,8 @@ open class Chunk(val chunkPosition: ChunkPosition) {
         return x * chunkSize * chunkSize + y * chunkSize + z
     }
 
-    fun setBlock(x: Int, y: Int, z: Int, blockState: BlockState) {
-        blockStates[getIndex(x, y, z)] = blockState
+    fun setBlock(x: Int, y: Int, z: Int, block: Block) {
+        blockStates[getIndex(x, y, z)] = BlockState(block)
     }
 
     fun createRenderable() = CompletableFuture.supplyAsync<Pair<List<RenderableDefinition.Submesh>, List<Vertex>>> {

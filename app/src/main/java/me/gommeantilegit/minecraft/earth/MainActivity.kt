@@ -7,8 +7,6 @@ import android.content.Context
 import android.os.Build
 import android.os.Build.VERSION_CODES
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.MotionEvent
@@ -20,17 +18,13 @@ import com.google.ar.core.Session
 import com.google.ar.sceneform.FrameTime
 import com.google.ar.sceneform.Scene
 import com.google.ar.sceneform.math.Vector3
-import com.google.ar.sceneform.rendering.ModelRenderable
-import com.google.ar.sceneform.rendering.RenderableDefinition
 import com.google.ar.sceneform.ux.ArFragment
-import com.google.ar.sceneform.ux.TransformableNode
 import me.gommeantilegit.minecraft.earth.rendering.BlockModelBakery
 import me.gommeantilegit.minecraft.earth.utils.BlockPos
 import me.gommeantilegit.minecraft.earth.world.ChunkPosition
-import me.gommeantilegit.minecraft.earth.world.ChunkResponse
 import me.gommeantilegit.minecraft.earth.world.World
 import me.gommeantilegit.minecraft.earth.world.WorldDisplayer
-import me.gommeantilegit.minecraft.earth.world.generation.SuperFlatChunkGenerator
+import me.gommeantilegit.minecraft.earth.world.generation.DefaultWorldGenerator
 
 /**
  * This is an example activity that uses the Sceneform UX package to make common AR tasks easier.
@@ -61,7 +55,7 @@ class MainActivity : AppCompatActivity() {
         BlockModelBakery.init(this)
 
         val world = World()
-        val worldGenerator = SuperFlatChunkGenerator()
+        val worldGenerator = DefaultWorldGenerator()
 
         arFragment.setOnTapArPlaneListener { hitResult: HitResult, _: Plane, _: MotionEvent ->
             if (placed) {
@@ -69,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             }
             placed = true
             arSession = arFragment.arSceneView.session!!
-            worldDisplayer = WorldDisplayer(4, arFragment, arSession, hitResult, world, worldGenerator)
+            worldDisplayer = WorldDisplayer(1, arFragment, arSession, hitResult, world, worldGenerator)
         }
         arScene.addOnUpdateListener { frameTime ->
             doTick(frameTime!!)

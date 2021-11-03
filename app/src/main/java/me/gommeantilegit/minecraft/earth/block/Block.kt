@@ -58,6 +58,7 @@ data class Block(val unlocalizedName: String, val id: Int, val invisible: Boolea
 }
 
 object Blocks {
+
     val air = Block("air", 0, true)
     val stone = Block("stone", 1, "stone", false, 0f, 1f, 0f)
     val dirt = Block("dirt", 2, "dirt", false, 0f, 1f, 0f)
@@ -90,4 +91,8 @@ object Blocks {
     val blocks = listOf(
             air, stone, dirt, bedrock, grass, log, leaves, diamondOre
     )
+
+    fun byName(blockName: String): Block? {
+        return blocks.firstOrNull { block -> block.unlocalizedName == blockName }
+    }
 }
