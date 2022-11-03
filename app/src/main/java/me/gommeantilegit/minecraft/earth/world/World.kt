@@ -1,128 +1,34 @@
 package me.gommeantilegit.minecraft.earth.world
 
-import android.os.Handler
-import android.os.Looper
-import com.google.ar.core.HitResult
-import com.google.ar.core.Pose
-import com.google.ar.core.Session
-import com.google.ar.sceneform.AnchorNode
-import com.google.ar.sceneform.Node
 import com.google.ar.sceneform.math.Vector3
-import com.google.ar.sceneform.rendering.ModelRenderable
 import com.google.ar.sceneform.rendering.RenderableDefinition
-import com.google.ar.sceneform.rendering.ThreadPools
 import com.google.ar.sceneform.rendering.Vertex
-import com.google.ar.sceneform.ux.ArFragment
-import com.google.ar.sceneform.ux.TransformableNode
 import me.gommeantilegit.minecraft.earth.block.Block
 import me.gommeantilegit.minecraft.earth.block.Blocks
 import me.gommeantilegit.minecraft.earth.rendering.BlockModelBakery
 import me.gommeantilegit.minecraft.earth.utils.BlockPos
 import me.gommeantilegit.minecraft.earth.utils.EnumFacing
-import me.gommeantilegit.minecraft.earth.world.generation.IWorldGenerator
 import java.lang.Math.floorDiv
-import java.util.*
 import java.util.concurrent.CompletableFuture
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-import kotlin.collections.HashSet
-import kotlin.math.roundToLong
 
 data class BlockState(val block: Block)
-
-class WorldDisplayer(private val renderDistance: Int, private val arFragment: ArFragment, private val arSession: Session, private val worldPlacePoint: HitResult, private val world: World, private val worldGenerator: IWorldGenerator) {
-
-    private val originAnchor = AnchorNode(worldPlacePoint.trackable.createAnchor(worldPlacePoint.hitPose)).apply {
-        setParent(arFragment.arSceneView.scene)
-    }
-
-    private var lastChunkPos: ChunkPosition? = null
-    private var lastBlockPos: BlockPos? = null
-
-    /**
-     * Handler on UI thread
-     */
-    private val handler = Handler(Looper.getMainLooper()) { message ->
-        val obj = message.obj
-        if (obj is ChunkResponse) {
-            val node = Node().apply {
-                val vec = obj.chunkPosition.asVector
-                vec.y -= 1
-                localPosition = vec
-            }
-
-            val definition = RenderableDefinition.builder()
-                    .setVertices(obj.vertices)
-                    .setSubmeshes(obj.meshes)
-                    .build()
-
-            ModelRenderable.builder()
-                    .setSource(definition)
-                    .build()
-                    .thenAcceptAsync { renderable ->
-                        Thread.sleep(1)
-                        ThreadPools.getMainExecutor().execute {
-                            node.renderable = renderable
-                            node.setParent(originAnchor)
-                        }
-                    }
-        }
-        true
-    }
-
-    fun onViewerMoved(viewerPosition: Vector3) {
-        val currentBlockPos = BlockPos.of(viewerPosition)
-        val currentChunkPos = currentBlockPos.chunkPos
-        if (currentChunkPos != lastChunkPos) {
-            onChunkChanged(currentChunkPos)
-        }
-        lastChunkPos = currentChunkPos
-        lastBlockPos = currentBlockPos
-    }
-
-    private fun onChunkChanged(newChunkPosition: ChunkPosition) {
-        for (pos in newChunkPosition.iterateRange(renderDistance)) {
-            if (!world.hasChunkAt(pos)) {
-                CompletableFuture.supplyAsync {
-                    val chunk = Chunk(pos)
-                    worldGenerator.generate(chunk)
-                    world.addChunk(chunk)
-                    displayChunk(chunk)
-                }
-            }
-        }
-    }
-
-    private fun displayChunk(chunk: Chunk) {
-        chunk.createRenderable().thenAccept { pair ->
-            val message = handler.obtainMessage()
-            message.obj = ChunkResponse(chunk.chunkPosition, pair.second, pair.first)
-            handler.sendMessage(message)
-        }
-    }
-
-    fun getViewerPosition(localPosition: Vector3): Vector3 {
-        val originTranslation = originAnchor.anchor!!.pose.translation
-        return Vector3(localPosition.x - originTranslation[0], localPosition.y - originTranslation[1], localPosition.z - originTranslation[2])
-    }
-}
 
 /**
  * @property chunkX the x position of the chunk in unit "chunks"
  * @property chunkX the y position of the chunk in unit "chunks"
  * @property chunkX the z position of the chunk in unit "chunks"
  */
-data class ChunkPosition(val chunkX: Int, val chunkY: Int, val chunkZ: Int) {
+class ChunkPosition(val chunkX: Int, val chunkY: Int, val chunkZ: Int) {
 
     fun iterateRange(chunkDistance: Int): Iterable<ChunkPosition> {
         val positions = HashSet<ChunkPosition>((2 * chunkDistance) * (2 * chunkDistance) * (2 * chunkDistance))
         for (x in -chunkDistance..chunkDistance) {
+//            for (y in -chunkDistance..chunkDistance) {
             val y = 0
-            //for (y in -chunkDistance..chunkDistance) {
             for (z in -chunkDistance..chunkDistance) {
                 positions.add(ChunkPosition(chunkX + x, chunkY + y, chunkZ + z))
             }
-            //}
+//            }
         }
         return positions
     }
@@ -161,6 +67,23 @@ data class ChunkPosition(val chunkX: Int, val chunkY: Int, val chunkZ: Int) {
         }
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (other is ChunkPosition) {
+            return other.chunkX == chunkX && other.chunkY == chunkY && other.chunkZ == chunkZ
+        }
+        return false
+    }
+
+    override fun hashCode(): Int {
+        var result = chunkX
+        result = 31 * result + chunkY
+        result = 31 * result + chunkZ
+        return result
+    }
+
+    override fun toString(): String {
+        return "ChunkPosition(chunkX=$chunkX, chunkY=$chunkY, chunkZ=$chunkZ)"
+    }
 }
 
 open class World {
@@ -171,26 +94,104 @@ open class World {
 
     private val chunks = HashMap<ChunkPosition, Chunk>()
 
-    fun getBlock(x: Int, y: Int, z: Int) = getBlock(BlockPos(x, y, z))
+    private val blockChangeListeners = ArrayList<(BlockPos, BlockState) -> Unit>()
 
-    fun getBlock(blockPos: BlockPos) = with(blockPos) {
-        chunks.computeIfAbsent(ChunkPosition.of(this)) { Chunk(blockPos.chunkPos) }.getBlock(x, y, z)
+    fun addBlockChangeListener(listener: (BlockPos, BlockState) -> Unit) {
+        blockChangeListeners.add(listener)
     }
 
+    /**
+     * @param x the x position of the block in unit "blocks"
+     * @param y the y position of the block in unit "blocks"
+     * @param z the z position of the block in unit "blocks"
+     * @return the block at the specified world-space position
+     */
+    fun getBlockWithWorldSpaceCoords(x: Int, y: Int, z: Int) = getBlockWithWorldSpaceCoords(BlockPos(x, y, z))
+
+    /**
+     * @param pos the position of the block in unit "blocks"
+     * @return the block at the specified position
+     */
+    fun getBlockWithWorldSpaceCoords(pos: BlockPos) = with(pos) {
+        return@with chunks[ChunkPosition.of(this)]?.getBlockWithWorldSpaceCoords(x, y, z)
+    }
+
+    /**
+     * @return whether a chunk at the specified position exists
+     */
     fun hasChunkAt(chunkPosition: ChunkPosition): Boolean {
         return chunks.containsKey(chunkPosition)
     }
 
+    /**
+     * Adds the specified chunk to the world
+     * @param chunk the chunk to add
+     */
     fun addChunk(chunk: Chunk) {
         chunks[chunk.chunkPosition] = chunk
+    }
+
+    /**
+     * Breaks the block at the specified world space position
+     * @param pos the world space position of the block to break
+     */
+    fun breakBlock(pos: BlockPos) {
+        setBlockWithWorldSpaceCoords(pos, Blocks.air)
+    }
+
+    /**
+     * Sets the block at the specified world space position to the specified block state
+     * @param pos the world space position of the block to set
+     * @param blockState the block state to set the block to
+     */
+    fun setBlockWithWorldSpaceCoords(pos: BlockPos, blockState: BlockState) {
+        chunks.computeIfAbsent(ChunkPosition.of(pos)) { Chunk(pos.chunkPos) }.setBlockWithWorldSpaceCoords(pos, blockState)
+    }
+
+    /**
+     * Sets the block at the specified world space position to the default block state of the specified block
+     * @param pos the world space position of the block to set
+     * @param block the block to set the block to
+     */
+    fun setBlockWithWorldSpaceCoords(pos: BlockPos, block: Block) {
+        val newState = BlockState(block)
+        chunks.computeIfAbsent(ChunkPosition.of(pos)) { Chunk(pos.chunkPos) }.setBlockWithWorldSpaceCoords(pos, newState)
+        for (listener in blockChangeListeners) {
+            listener(pos, newState)
+        }
+    }
+
+    /**
+     * @param x the x position of the block in unit "blocks"
+     * @param y the y position of the block in unit "blocks"
+     * @param z the z position of the block in unit "blocks"
+     * @param side the side of the block face
+     * @return whether the block is exposed in the specified facing direction.
+     * If eg. a block is surrounded by air on all sides, it is exposed on all sides.
+     * If a block is surrounded by air on all sides except the top, it is exposed on all sides except the top.
+     */
+    fun isBlockExposedOnSide(x: Int, y: Int, z: Int, side: EnumFacing): Boolean {
+        with(side.facingDirection) {
+            with(getBlockWithWorldSpaceCoords(x + this.x, y + this.y, z + this.z) ?: return false) {
+                return this.block.invisible
+            }
+        }
+    }
+
+    /**
+     * @param chunkPos the position of the chunk
+     * @return the chunk at the specified position
+     */
+    fun getChunkAt(chunkPos: ChunkPosition): Chunk? {
+        return chunks[chunkPos]
     }
 
 }
 
 /**
- * Response from async chunk creation
+ * Result for async chunk creation
  */
-data class ChunkResponse(val chunkPosition: ChunkPosition, val vertices: List<Vertex>, val meshes: List<RenderableDefinition.Submesh>)
+data class ChunkMeshBuildResult(val chunkPosition: ChunkPosition, val meshes: List<RenderableDefinition.Submesh>, val vertices: List<Vertex>)
 
 open class Chunk(val chunkPosition: ChunkPosition) {
 
@@ -214,45 +215,69 @@ open class Chunk(val chunkPosition: ChunkPosition) {
     /**
      * @return the block state of the block with the given chunk local x, y, z, coordinate
      */
-    fun getBlock(x: Int, y: Int, z: Int) = blockStates.getOrNull(getIndex(x, y, z))
+    fun getBlockWithLocalCoords(x: Int, y: Int, z: Int) = blockStates.getOrNull(getIndex(x, y, z))
+
+    /**
+     * @return the block state of the block with the given world space x, y, z, coordinate
+     */
+    fun getBlockWithWorldSpaceCoords(x: Int, y: Int, z: Int) = getBlockWithLocalCoords(x - chunkPosition.xPosition, y - chunkPosition.yPosition, z - chunkPosition.zPosition)
 
     /**
      * @return the index for a given block position in the block states array or -1 if the position is out of local chunk bounds
      */
     private fun getIndex(x: Int, y: Int, z: Int): Int {
         if (x >= chunkSize || y >= chunkSize || z >= chunkSize || x < 0 || y < 0 || z < 0)
-            return -1
+            throw IndexOutOfBoundsException("Block position out of chunk bounds")
         return x * chunkSize * chunkSize + y * chunkSize + z
     }
 
-    fun setBlock(x: Int, y: Int, z: Int, block: Block) {
-        blockStates[getIndex(x, y, z)] = BlockState(block)
+    /**
+     * Sets the block state at the given chunk local x, y, z, coordinate to the specified block state
+     * @param x the x coordinate of the block locally to the chunk origin
+     * @param y the y coordinate of the block locally to the chunk origin
+     * @param z the z coordinate of the block locally to the chunk origin
+     * @param blockState the block state to set the block to
+     */
+    fun setBlockWithLocalCoords(x: Int, y: Int, z: Int, blockState: BlockState) {
+        blockStates[getIndex(x, y, z)] = blockState
     }
 
-    fun createRenderable() = CompletableFuture.supplyAsync<Pair<List<RenderableDefinition.Submesh>, List<Vertex>>> {
+    /**
+     * Sets the block state at the given world space x, y, z, coordinate to the default block state of the given block
+     * @param x the x coordinate of the block globally
+     * @param y the y coordinate of the block globally
+     * @param z the z coordinate of the block globally
+     * @param block the type of block that should be set at the given position
+     */
+    fun setBlockWithWorldSpaceCoords(x: Int, y: Int, z: Int, blockState: BlockState) {
+        setBlockWithLocalCoords(x - chunkPosition.xPosition, y - chunkPosition.yPosition, z - chunkPosition.zPosition, blockState)
+    }
+
+
+    /**
+     * Sets the block state at the given world space x, y, z, coordinate
+     * @param blockPos the position of the block globally
+     * @param blockState the block state to set the block to
+     */
+    fun setBlockWithWorldSpaceCoords(blockPos: BlockPos, blockState: BlockState) {
+        setBlockWithWorldSpaceCoords(blockPos.x, blockPos.y, blockPos.z, blockState)
+    }
+
+    fun createRenderable(world: World): CompletableFuture<Pair<List<RenderableDefinition.Submesh>, List<Vertex>>> = CompletableFuture.completedFuture(let {
         val vertices = ArrayList<Vertex>()
         val meshes = ArrayList<RenderableDefinition.Submesh>()
         for (x in 0 until chunkSize) {
             for (y in 0 until chunkSize) {
                 for (z in 0 until chunkSize) {
-                    val state = getBlock(x, y, z)
+                    val state = getBlockWithLocalCoords(x, y, z)
                     meshes.addAll(BlockModelBakery.getModel(state?.block
-                            ?: error("Could not retrieve chunk local block state for co-ordinates (x=$x, y=$y, z=$z)"))?.modelBuilder?.build(this, vertices, x, y, z)
+                            ?: error("Could not retrieve chunk local block state for co-ordinates (x=$x, y=$y, z=$z)"))?.modelBuilder?.build(world, this, vertices, x, y, z)
                             ?: continue) // continue for invisible blocks as they do not have a model
                 }
             }
         }
         Pair(meshes, vertices)
-    }
-
-    fun canSee(x: Int, y: Int, z: Int, side: Int): Boolean {
-        val facing = EnumFacing.ofIndex(side) ?: error("Invalid enum facing: $side")
-        with(facing.facingDirection) {
-            with(getBlock(x + this.x, y + this.y, z + this.z) ?: return false) {
-                return this.block.invisible
-            }
-        }
-    }
+    })
 
     override fun hashCode(): Int {
         return blockStates.contentDeepHashCode()

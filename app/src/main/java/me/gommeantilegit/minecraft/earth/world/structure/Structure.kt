@@ -3,6 +3,7 @@ package me.gommeantilegit.minecraft.earth.world.structure
 import me.gommeantilegit.minecraft.earth.MainActivity.Companion.context
 import me.gommeantilegit.minecraft.earth.block.Block
 import me.gommeantilegit.minecraft.earth.block.Blocks
+import me.gommeantilegit.minecraft.earth.world.BlockState
 import me.gommeantilegit.minecraft.earth.world.Chunk
 
 class Structure(val sizeX: Int, val sizeY: Int, val sizeZ: Int, private val blockArray: Array<Block>) {
@@ -24,7 +25,7 @@ class Structure(val sizeX: Int, val sizeY: Int, val sizeZ: Int, private val bloc
                 for (z in 0 until sizeZ) {
                     val block = get(x, y, z)
                     if (block != Blocks.air)
-                        chunk.setBlock(startX + x, startY + y, startZ + z, block)
+                        chunk.setBlockWithLocalCoords(startX + x, startY + y, startZ + z, BlockState(block))
                 }
             }
         }
@@ -66,7 +67,7 @@ class Structure(val sizeX: Int, val sizeY: Int, val sizeZ: Int, private val bloc
                                     "sizeX" -> sizeX = varValue.toInt()
                                     "sizeY" -> {
                                         sizeY = varValue.toInt()
-                                        blocks = Array(sizeY) { mutableListOf<MutableList<Block>>() }
+                                        blocks = Array(sizeY) { mutableListOf() }
                                     }
                                     "sizeZ" -> sizeZ = varValue.toInt()
                                 }

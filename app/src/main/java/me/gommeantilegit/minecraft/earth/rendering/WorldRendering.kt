@@ -14,8 +14,20 @@ class TextureResource(val textureResource: String, val transparent: Boolean)
 
 class TextureData(val texture: CompletableFuture<Texture>, val transparent: Boolean)
 
+/**
+ * An object that generates meshes for a given block type at a specified position.
+ */
 interface Mesher {
-    fun build(chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh>
+    /**
+     * Builds the mesh for the given chunk
+     * @param world the world the chunk is in. Used for context beyond the specified chunk.
+     * @param chunk the chunk to build the mesh for
+     * @param chunkVertices the list of vertices to add to (the mesh output)
+     * @param x the chunk local x block position where to build the mesh
+     * @param y the chunk local y block position where to build the mesh
+     * @param z the chunk local z block position where to build the mesh
+     */
+    fun build(world: World, chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh>
 }
 
 /**
@@ -70,7 +82,7 @@ class StupidMesher(textureFutures: List<List<TextureData>>, context: Context, me
         }
     }
 
-    override fun build(chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh> {
+    override fun build(world: World, chunk: Chunk, chunkVertices: MutableList<Vertex>, x: Int, y: Int, z: Int): List<RenderableDefinition.Submesh> {
 
         val size = Vector3(1f, 1f, 1f).scaled(0.5f).scaled(World.worldScale)
 
@@ -133,7 +145,9 @@ class StupidMesher(textureFutures: List<List<TextureData>>, context: Context, me
 
         for (side in 0..5) {
 
-            if (!chunk.canSee(x, y, z, side))
+            val facing = EnumFacing.ofIndex(side) ?: error("Invalid enum facing: $side")
+
+            if (!world.isBlockExposedOnSide(chunk.chunkPosition.xPosition + x, chunk.chunkPosition.yPosition + y, chunk.chunkPosition.zPosition + z, facing))
                 continue
 
             val indices = ArrayList<Int>(6)

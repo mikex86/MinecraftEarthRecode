@@ -57,14 +57,14 @@ class MainActivity : AppCompatActivity() {
         val world = World()
         val worldGenerator = DefaultWorldGenerator()
 
-        arFragment.setOnTapArPlaneListener { hitResult: HitResult, _: Plane, _: MotionEvent ->
-            if (placed) {
-                return@setOnTapArPlaneListener
+        arFragment.setOnTapArPlaneListener { hitResult: HitResult, _: Plane, motionEvent: MotionEvent ->
+            if (!placed) {
+                placed = true
+                arSession = arFragment.arSceneView.session!!
+                worldDisplayer = WorldDisplayer(1, arFragment, arSession, hitResult, world, worldGenerator)
             }
-            placed = true
-            arSession = arFragment.arSceneView.session!!
-            worldDisplayer = WorldDisplayer(1, arFragment, arSession, hitResult, world, worldGenerator)
         }
+
         arScene.addOnUpdateListener { frameTime ->
             doTick(frameTime!!)
         }
@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         if (!placed) {
             return
         }
-        val viewerPosition = worldDisplayer.getViewerPosition(arScene.camera.localPosition)
+        val viewerPosition = worldDisplayer.getWorldSpaceCoords(arScene.camera.localPosition)
 
         val currentBlockPos = BlockPos.of(viewerPosition)
         val currentChunkPos = currentBlockPos.chunkPos
@@ -82,8 +82,11 @@ class MainActivity : AppCompatActivity() {
         setDebugInfo(viewerPosition, currentBlockPos, currentChunkPos)
 
         worldDisplayer.onViewerMoved(viewerPosition)
+
+        worldDisplayer.onFrame()
     }
 
+    @SuppressLint("SetTextI18n")
     private fun setDebugInfo(viewerPos: Vector3, blockPos: BlockPos, chunkPosition: ChunkPosition) {
         debugText.text = "ViewerPos: (x=${"%.2f".format(viewerPos.x)}, y=${"%.2f".format(viewerPos.y)}, z=${"%.2f".format(viewerPos.z)})\nBlockPos: (x=${blockPos.x}, y=${blockPos.y}, z=${blockPos.z})\nChunkPosition: (x=${chunkPosition.xPosition}, y=${chunkPosition.yPosition}, z=${chunkPosition.zPosition})"
     }
